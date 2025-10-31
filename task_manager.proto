@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package proto;
+
+import "QtCore/QtCore.proto";
+import "QtGui/QtGui.proto";
+
+message TaskHeader {
+    QtCore.QUuid id = 1;
+    string name = 2;
+    QtGui.QColor color = 3;
+    QtCore.QDateTime crated = 4;
+}
+
+message Task {
+    enum Priority {
+        Low = 0;
+        Medium = 1;
+        High = 2;
+        Critical = 3;
+    }
+    TaskHeader header = 1;
+    Priority priority = 2;
+    bool completed = 3;
+    string description = 4;
+}
+
+message TaskList {
+    TaskHeader header = 1;
+    repeated Task tasks = 2;
+}
+
+message TaskManager {
+    string user = 1;
+    QtCore.QVersionNumber version = 2;
+    repeated TaskList lists = 5;
+}
+
