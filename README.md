@@ -1,8 +1,10 @@
 # Qt Serialization Benchmarks
 
-<p align="center">
-  <img src="data_layout.png" alt="Data Layout" style="max-height:300px;">
-</p>
+<div align="center">
+  <img src="data_layout.png" alt="Data Layout" width="60%">
+</div>
+
+<br>
 
 Benchmarks of Qt serialization formats using a `TaskManager` with **10,000 tasks**
 (Qt 6.10.0, macOS ARM64)
