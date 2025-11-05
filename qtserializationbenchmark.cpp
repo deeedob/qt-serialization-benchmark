@@ -409,7 +409,7 @@ TaskManager deserializeCbor(const QByteArray &data) {
     return decodeCborTaskManager(cborRoot);
 }
 
-#include "taskmanager.qpb.h"
+#include "task_manager.qpb.h"
 #include <QtProtobuf/QProtobufSerializer>
 #include <QtProtobufQtCoreTypes/QtProtobufQtCoreTypes>
 #include <QtProtobufQtGuiTypes/QtProtobufQtGuiTypes>
