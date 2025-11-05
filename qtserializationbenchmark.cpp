@@ -37,6 +37,9 @@ TaskManager deserializeJson(const QByteArray &data);
 QByteArray serializeCbor(const TaskManager &contacts);
 TaskManager deserializeCbor(const QByteArray &data);
 
+QByteArray serializeCborStream(const TaskManager &contacts);
+TaskManager deserializeCborStream(const QByteArray &data);
+
 struct SerializationFormat
 {
     QByteArray (*serialize)(const TaskManager &);
@@ -55,6 +58,8 @@ void QtSerializationBenchmarks::QtCoreSerialization_data() const
         serializeJson, deserializeJson };
     QTest::newRow("CBOR") << SerializationFormat{
         serializeCbor, deserializeCbor };
+    QTest::newRow("CBORStream") << SerializationFormat{
+        serializeCborStream, deserializeCborStream };
 }
 void QtSerializationBenchmarks::QtCoreSerialization()
 {
@@ -407,6 +412,169 @@ TaskManager decodeCborTaskManager(const QCborMap &map) {
 TaskManager deserializeCbor(const QByteArray &data) {
     const auto cborRoot = QCborValue::fromCbor(data).toMap();
     return decodeCborTaskManager(cborRoot);
+}
+
+#include <QtCore/QCborStreamWriter>
+
+void encodeCborStreamHeader(QCborStreamWriter &writer, const TaskHeader &header) {
+    writer.startMap(4);
+
+    writer.append("id"_L1);
+    writer.append(header.id.toString(QUuid::WithoutBraces));
+
+    writer.append("name"_L1);
+    writer.append(header.name);
+
+    writer.append("color"_L1);
+    writer.append(header.color.name());
+
+    writer.append("created"_L1);
+    writer.append(header.created.toString(Qt::ISODateWithMs));
+
+    writer.endMap();
+}
+void encodeCborStreamTask(QCborStreamWriter &writer, const Task &task) {
+    writer.startMap(4);
+    writer.append("header"_L1);
+    encodeCborStreamHeader(writer, task.header);
+    writer.append("description"_L1);
+    writer.append(task.description);
+    writer.append("priority"_L1);
+    writer.append(qint64(qToUnderlying(task.priority)));
+    writer.append("completed"_L1);
+    writer.append(task.completed);
+    writer.endMap();
+}
+void encodeCborStreamTaskList(QCborStreamWriter &writer, const TaskList &list) {
+    writer.startMap(2);
+
+    writer.append("header"_L1);
+    encodeCborStreamHeader(writer, list.header);
+
+    writer.append("tasks"_L1);
+    writer.startArray(quint64(list.tasks.size()));
+    for (const auto &t : list.tasks)
+        encodeCborStreamTask(writer, t);
+    writer.endArray();
+
+    writer.endMap();
+}
+void encodeCborStreamTaskManager(QCborStreamWriter &writer, const TaskManager &manager) {
+    writer.startMap(3);
+    writer.append("user"_L1);
+    writer.append(manager.user);
+    writer.append("version"_L1);
+    writer.append(manager.version.toString());
+    writer.append("lists"_L1);
+    writer.startArray(quint64(manager.lists.size()));
+    for (const auto &l : manager.lists)
+        encodeCborStreamTaskList(writer, l);
+    writer.endArray();
+
+    writer.endMap();
+}
+
+QByteArray serializeCborStream(const TaskManager &manager)
+{
+    QByteArray data;
+    QCborStreamWriter writer(&data);
+    encodeCborStreamTaskManager(writer, manager);
+    return data;
+}
+
+#include <QtCore/QCborStreamReader>
+
+TaskHeader decodeCborStreamHeader(QCborStreamReader &reader) {
+    TaskHeader header;
+    reader.enterContainer();
+    while (reader.hasNext()) {
+        const QString key = reader.readString().data;
+        reader.next();
+        if (key == "id"_L1)
+            header.id = QUuid(reader.readString().data);
+        else if (key == "name"_L1)
+            header.name = reader.readString().data;
+        else if (key == "color"_L1)
+            header.color = QColor(reader.readString().data);
+        else if (key == "created"_L1)
+            header.created = QDateTime::fromString(reader.readString().data, Qt::ISODateWithMs);
+        reader.next();
+    }
+    reader.leaveContainer();
+    return header;
+}
+Task decodeCborStreamTask(QCborStreamReader &reader) {
+    Task task;
+    reader.enterContainer();
+    while (reader.hasNext()) {
+        const QString key = reader.readString().data;
+        reader.next();
+        if (key == "header"_L1) {
+            task.header = decodeCborStreamHeader(reader);
+        } else if (key == "description"_L1) {
+            task.description = reader.readString().data;
+            reader.next();
+        } else if (key == "priority"_L1) {
+            task.priority = Task::Priority(reader.toInteger());
+            reader.next();
+        } else if (key == "completed"_L1) {
+            task.completed = reader.toBool();
+            reader.next();
+        } else {
+            reader.next();
+        }
+    }
+    reader.leaveContainer();
+    return task;
+}
+TaskList decodeCborStreamTaskList(QCborStreamReader &reader) {
+    TaskList list;
+    reader.enterContainer();
+    while (reader.hasNext()) {
+        const QString key = reader.readString().data;
+        reader.next();
+        if (key == "header"_L1) {
+            list.header = decodeCborStreamHeader(reader);
+        } else if (key == "tasks"_L1) {
+            reader.enterContainer();
+            while (reader.hasNext())
+                list.tasks.append(decodeCborStreamTask(reader));
+            reader.leaveContainer();
+        } else {
+            reader.next();
+        }
+    }
+    reader.leaveContainer();
+    return list;
+}
+TaskManager decodeCborStreamTaskManager(QCborStreamReader &reader) {
+    TaskManager manager;
+    reader.enterContainer();
+    while (reader.hasNext()) {
+        const QString key = reader.readString().data;
+        reader.next();
+        if (key == "user"_L1) {
+            manager.user = reader.readString().data;
+            reader.next();
+        } else if (key == "version"_L1) {
+            manager.version = QVersionNumber::fromString(reader.readString().data);
+            reader.next();
+        } else if (key == "lists"_L1) {
+            reader.enterContainer();
+            while (reader.hasNext())
+                manager.lists.append(decodeCborStreamTaskList(reader));
+            reader.leaveContainer();
+        } else {
+            reader.next();
+        }
+    }
+    reader.leaveContainer();
+    return manager;
+}
+
+TaskManager deserializeCborStream(const QByteArray &data) {
+    QCborStreamReader reader(data);
+    return decodeCborStreamTaskManager(reader);
 }
 
 #include "task_manager.qpb.h"
